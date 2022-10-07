@@ -1,0 +1,109 @@
+from tqdm import tqdm
+import time
+import os
+import pySPM
+
+import matplotlib.pyplot as plt
+
+import collections 
+import collections.abc
+import io
+from pptx import Presentation
+from pptx.util import Cm,Pt
+from pptx.enum.text import PP_ALIGN
+
+def get_SXMlist(operate_path):
+    # 操作的文件夹路径
+    sxmfiles = []
+    for root, dirs, files in os.walk(operate_path):
+        for f in files:
+            apx = f.split(".")[-1]
+            if apx == 'sxm':
+                sxmfiles.append(root + "\\" + f)
+    return sxmfiles
+
+def add_text(slide,text=["Filename, 50 nm","yyyy.mm.dd hh:mm, acTime","Bias, Setpoint, Dir"], horizontal=Cm(2), Vertical=Cm(7.5)):
+    
+    txBox = slide.shapes.add_textbox(horizontal, Vertical+Cm(6.5), Cm(6.5), Cm(1.8))
+    text[1] = (str(int(float(text[1])*(10**9))) + 'nm') #扫图尺寸转换为nm
+    tf = txBox.text_frame
+    tf.text = text[0] + ', ' + text[1] #teBox添加第一行
+    tf.fit_text(font_family="Arial",max_size=12,bold=True) #定义teBox第一行的格式
+
+    p = tf.add_paragraph()
+    p.text = text[2] + ', ' + text[3]
+    p.font.size = Pt(12)
+
+    # p = tf.add_paragraph()
+    # p.text = text[4] + ', ' + text[5] + ', ' + text[7]
+    # p.font.size = Pt(10)
+    for i in range(len(tf.paragraphs)): #设置右对齐
+        tf.paragraphs[i].alignment = PP_ALIGN.RIGHT 
+   
+def main():
+
+    SXMlist = get_SXMlist(os.getcwd())
+    operate_path = os.getcwd()
+    sxm_files = SXMlist
+    
+    prs = Presentation() # 打开一个PPT文件
+    prs.slide_height = Cm(19.05)    #设置ppt的高度
+    prs.slide_width = Cm(33.867)  #设置ppt的宽度
+    blank_slide_layout = prs.slide_layouts[6] #选择母版6，其为纯空白
+    j = 0
+    pbar = tqdm(sxm_files) #调用了tqdm进度条
+    for i in pbar:
+        pbar.set_description("Processing {}".format(i))
+        if j%8 == 0:  #根据计数器j判断贴图位置
+            slide = prs.slides.add_slide(blank_slide_layout) #j==0时，添加新一页幻灯片
+            horizontal, Vertical = Cm(2), Cm(0.8) 
+        if j%8 == 1: 
+            horizontal, Vertical = Cm(9.5), Cm(0.8)
+        if j%8 == 2: 
+            horizontal, Vertical = Cm(17), Cm(0.8)
+        if j%8 == 3: 
+            horizontal, Vertical = Cm(24.5), Cm(0.8)
+        if j%8 == 4: 
+            horizontal, Vertical = Cm(2), Cm(10)
+        if j%8 == 5: 
+            horizontal, Vertical = Cm(9.5), Cm(10)
+        if j%8 == 6: 
+            horizontal, Vertical = Cm(17), Cm(10)
+        if j%8 == 7: 
+            horizontal, Vertical = Cm(24.5), Cm(10)
+        j = j + 1
+        
+        S = pySPM.SXM(i)
+        Z = S.get_channel('Z',corr = 'lines')
+        scan_dir = S.header['SCAN_DIR'][0][0]
+        if scan_dir == 'up': #根据扫描方向up or down，按正确的方向输出image
+            Z.show(cmap='hot',flip = False,title='') 
+        elif scan_dir == 'down':
+            Z.show(cmap='hot',flip = True,title='') 
+        plt.axis('off')
+        image1 = io.BytesIO()
+        plt.savefig(image1, bbox_inches='tight',pad_inches=0.0) #保存图像时去除白边
+        plt.close()
+        slide.shapes.add_picture(image1,horizontal,Vertical,Cm(6.5),Cm(6.5)) #插入图片1
+        
+        text_to_write = []
+        fileneme = S.filename.split('\\')[-1].split('.')[0]
+        text_to_write.append(fileneme)
+        text_to_write.append(S.header['SCAN_RANGE'][0][0])
+        text_to_write.append(S.header['REC_DATE'][0][0])
+        text_to_write.append(S.header['REC_TIME'][0][0])
+        text_to_write.append(S.header['BIAS'][0][0])
+        text_to_write.append(S.header['Z-CONTROLLER'][1][3])
+        text_to_write.append(S.header['Z-CONTROLLER'][1][4])
+        text_to_write.append(S.header['SCAN_DIR'][0][0])
+        
+        add_text(slide,text_to_write,horizontal, Vertical)
+
+    sys_time = time.strftime('%Y%m%d %H.%M.%S', time.localtime(time.time()))
+    save_name =  'STMimags {}.pptx'.format(sys_time)
+    prs.save(operate_path + '\\' +save_name) # 将PPT保存到指定地址
+    print('\n----结果已保存在: "{}"----'.format(operate_path)+ '\\' + save_name)
+
+if __name__ == "__main__":
+
+    main()
