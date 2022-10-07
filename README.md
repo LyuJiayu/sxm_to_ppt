@@ -1,0 +1,2 @@
+# sxm_to_ppt
+这个脚本可帮助你实现将Nanonis生成的.sxm文件自动保存到PPT文件中
